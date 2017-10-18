@@ -172,34 +172,34 @@ set(ed25519_sources
 
 set(includes include ed25519/src)
 
-option(shared "build libtorrent as a shared library" ON)
-option(static_runtime "build libtorrent with static runtime" OFF)
-option(encryption "link against openssl and enable encryption" ON)
-option(dht "enable support for Mainline DHT" ON)
-option(deprecated-functions "enable deprecated functions for backwards compatibility" ON)
-option(exceptions "build with exception support" ON)
-option(libiconv "enable linking against system libiconv" OFF)
-option(logging "build with logging" ON)
-option(build_tests "build tests" OFF)
-option(build_examples "build examples" OFF)
+option(LIBTORRENT_shared "build libtorrent as a shared library" ON)
+option(LIBTORRENT_static_runtime "build libtorrent with static runtime" OFF)
+option(LIBTORRENT_encryption "link against openssl and enable encryption" ON)
+option(LIBTORRENT_dht "enable support for Mainline DHT" ON)
+option(LIBTORRENT_deprecated-functions "enable deprecated functions for backwards compatibility" ON)
+option(LIBTORRENT_exceptions "build with exception support" ON)
+option(LIBTORRENT_libiconv "enable linking against system libiconv" OFF)
+option(LIBTORRENT_logging "build with logging" ON)
+option(LIBTORRENT_build_tests "build tests" OFF)
+option(LIBTORRENT_build_examples "build examples" OFF)
 
 find_package(Threads REQUIRED)
 
 include_directories(${includes})
 
-if (encryption)
+if (LIBTORRENT_encryption)
 	list(APPEND sources pe_crypto)
 else()
 	if (NOT WIN32 AND NOT APPLE)
 		list(APPEND sources sha1)
 	endif()
-endif (encryption)
+endif (LIBTORRENT_encryption)
 
 foreach(s ${sources})
 	list(APPEND sources2 src/${s})
 endforeach(s)
 
-if (dht)
+if (LIBTORRENT_dht)
 	foreach(s ${kademlia_sources})
 		list(APPEND sources2 src/kademlia/${s})
 	endforeach(s)
@@ -207,12 +207,12 @@ if (dht)
 		list(APPEND sources2 ed25519/src/${s})
 	endforeach(s)
 	list(APPEND sources2 src/hasher512)
-	if (NOT encryption AND NOT WIN32 AND NOT APPLE)
+	if (NOT LIBTORRENT_encryption AND NOT WIN32 AND NOT APPLE)
 		list(APPEND sources2 src/sha512)
 	endif()
 endif()
 
-if (shared)
+if (LIBTORRENT_shared)
 	add_library(torrent-rasterbar SHARED ${sources2})
 	target_compile_definitions(torrent-rasterbar PRIVATE TORRENT_BUILDING_SHARED)
 	if(NOT MSVC)
@@ -220,7 +220,7 @@ if (shared)
 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fvisibility=hidden -fvisibility-inlines-hidden")
 	endif()
 else()
-	if(static_runtime)
+	if(LIBTORRENT_static_runtime)
 		# fix /MT flag:
 		set(CompilerFlags
 				CMAKE_CXX_FLAGS
@@ -247,19 +247,19 @@ target_compile_definitions(torrent-rasterbar PUBLIC $<$<CONFIG:Debug>:TORRENT_DE
 
 target_compile_definitions(torrent-rasterbar PRIVATE TORRENT_BUILDING_LIBRARY)
 
-if (build_tests)
+if (LIBTORRENT_build_tests)
 	# this will make some internal functions available in the
 	# DLL interface, for the tests to access
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_EXPORT_EXTRA)
-endif (build_tests)
+endif (LIBTORRENT_build_tests)
 
-if (libiconv)
+if (LIBTORRENT_libiconv)
 	find_package(Iconv REQUIRED)
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_USE_ICONV)
 	target_include_directories(torrent-rasterbar SYSTEM PUBLIC ${ICONV_INCLUDE_DIR})
-endif (libiconv)
+endif (LIBTORRENT_libiconv)
 
-if (encryption)
+if (LIBTORRENT_encryption)
 	if(NOT DEFINED OPENSSL_INCLUDE_DIR OR NOT DEFINED OPENSSL_LIBRARIES)
 		FIND_PACKAGE(OpenSSL REQUIRED)
 	endif()
@@ -269,11 +269,11 @@ else()
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_DISABLE_ENCRYPTION)
 endif()
 
-if (NOT logging)
+if (NOT LIBTORRENT_logging)
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_DISABLE_LOGGING)
 endif()
 
-if (NOT dht)
+if (NOT LIBTORRENT_dht)
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_DISABLE_DHT)
 endif()
 
@@ -281,7 +281,7 @@ endif()
 if(NOT DEFINED Boost_INCLUDE_DIR OR NOT DEFINED Boost_LIBRARIES)
 	FIND_PACKAGE(Boost REQUIRED COMPONENTS system)
 endif()
-include_directories(${Boost_INCLUDE_DIRS})
+target_include_directories(torrent-rasterbar PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(torrent-rasterbar ${Boost_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
 if (WIN32)
@@ -305,19 +305,19 @@ if(APPLE)
 	target_link_libraries(torrent-rasterbar "-framework CoreFoundation" "-framework SystemConfiguration")
 endif (APPLE)
 
-if (encryption)
+if (LIBTORRENT_encryption)
 	target_link_libraries(torrent-rasterbar ${OPENSSL_LIBRARIES})
 endif()
 
-if (libiconv)
+if (LIBTORRENT_libiconv)
 	target_link_libraries(torrent-rasterbar ${ICONV_LIBRARIES})
-endif (libiconv)
+endif (LIBTORRENT_libiconv)
 
-if (NOT deprecated-functions)
+if (NOT LIBTORRENT_deprecated-functions)
 	target_compile_definitions(torrent-rasterbar PUBLIC TORRENT_NO_DEPRECATE)
 endif()
 
-if (exceptions)
+if (LIBTORRENT_exceptions)
 	if (MSVC)
 		target_compile_options(torrent-rasterbar PUBLIC /EHsc)
 	else (MSVC)
@@ -413,13 +413,13 @@ install(
 )
 
 # === build examples ===
-if (build_examples)
+if (LIBTORRENT_build_examples)
 	add_subdirectory(examples)
 endif()
 
 # === build tests ===
-if(build_tests)
-	if (NOT logging)
+if(LIBTORRENT_build_tests)
+	if (NOT LIBTORRENT_logging)
 		message(FATAL_ERROR "tests require logging to be enabled")
 	endif()
 
