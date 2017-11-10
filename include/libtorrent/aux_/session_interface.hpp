@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/listen_socket_handle.hpp"
 #include "libtorrent/session_types.hpp"
 #include "libtorrent/flags.hpp"
+#include "libtorrent/link.hpp" // for torrent_list_index_t
 
 #include <functional>
 #include <memory>
@@ -88,6 +89,13 @@ namespace libtorrent {
 	struct torrent_peer_allocator_interface;
 	struct counters;
 	struct resolver_interface;
+
+	// hidden
+	struct queue_position_tag;
+	using queue_position_t = aux::strong_typedef<int, queue_position_tag>;
+
+	constexpr queue_position_t no_pos{-1};
+	constexpr queue_position_t last_pos{(std::numeric_limits<int>::max)()};
 
 #ifndef TORRENT_DISABLE_DHT
 namespace dht {
@@ -191,7 +199,7 @@ namespace libtorrent { namespace aux {
 		//deprecated in 1.2
 		virtual void insert_uuid_torrent(std::string uuid, std::shared_ptr<torrent> const& t) = 0;
 #endif
-		virtual void set_queue_position(torrent* t, int p) = 0;
+		virtual void set_queue_position(torrent* t, queue_position_t p) = 0;
 		virtual int num_torrents() const = 0;
 
 		virtual peer_id const& get_peer_id() const = 0;
@@ -252,41 +260,35 @@ namespace libtorrent { namespace aux {
 		virtual void sent_syn(bool ipv6) = 0;
 		virtual void received_synack(bool ipv6) = 0;
 
-		enum torrent_list_index
-		{
-			// this is the set of (subscribed) torrents that have changed
-			// their states since the last time the user requested updates.
-			torrent_state_updates,
+		// this is the set of (subscribed) torrents that have changed
+		// their states since the last time the user requested updates.
+		static constexpr torrent_list_index_t torrent_state_updates{0};
 
 			// all torrents that want to be ticked every second
-			torrent_want_tick,
+		static constexpr torrent_list_index_t torrent_want_tick{1};
 
 			// all torrents that want more peers and are still downloading
 			// these typically have higher priority when connecting peers
-			torrent_want_peers_download,
+		static constexpr torrent_list_index_t torrent_want_peers_download{2};
 
 			// all torrents that want more peers and are finished downloading
-			torrent_want_peers_finished,
+		static constexpr torrent_list_index_t torrent_want_peers_finished{3};
 
 			// torrents that want auto-scrape (only paused auto-managed ones)
-			torrent_want_scrape,
+		static constexpr torrent_list_index_t torrent_want_scrape{4};
 
 			// auto-managed torrents by state. Only these torrents are considered
 			// when recalculating auto-managed torrents. started auto managed
 			// torrents that are inactive are not part of these lists, because they
 			// are not considered for auto managing (they are left started
 			// unconditionally)
-			torrent_downloading_auto_managed,
-			torrent_seeding_auto_managed,
-			torrent_checking_auto_managed,
+		static constexpr torrent_list_index_t torrent_downloading_auto_managed{5};
+		static constexpr torrent_list_index_t torrent_seeding_auto_managed{6};
+		static constexpr torrent_list_index_t torrent_checking_auto_managed{7};
 
-			// all torrents that have resume data to save
-//			torrent_want_save_resume,
+		static constexpr std::size_t num_torrent_lists = 8;
 
-			num_torrent_lists
-		};
-
-		virtual aux::vector<torrent*>& torrent_list(int i) = 0;
+		virtual aux::vector<torrent*>& torrent_list(torrent_list_index_t i) = 0;
 
 		virtual bool has_lsd() const = 0;
 		virtual void announce_lsd(sha1_hash const& ih, int port, bool broadcast = false) = 0;
@@ -321,7 +323,7 @@ namespace libtorrent { namespace aux {
 		virtual void sent_buffer(int size) = 0;
 
 #if TORRENT_USE_ASSERTS
-		virtual bool verify_queue_position(torrent const*, int) = 0;
+		virtual bool verify_queue_position(torrent const*, queue_position_t) = 0;
 #endif
 
 		virtual ~session_interface() {}

@@ -60,7 +60,7 @@ namespace libtorrent {
 			void operator()(disk_io_job::hash_handler& h) const
 			{
 				if (!h) return;
-				h(m_job.piece, sha1_hash(m_job.d.piece_hash), m_job.error);
+				h(m_job.piece, m_job.d.piece_hash, m_job.error);
 			}
 
 			void operator()(disk_io_job::move_handler& h) const
@@ -102,6 +102,7 @@ namespace libtorrent {
 
 	constexpr disk_job_flags_t disk_io_job::fence;
 	constexpr disk_job_flags_t disk_io_job::in_progress;
+	constexpr disk_job_flags_t disk_io_job::aborted;
 
 	disk_io_job::disk_io_job()
 		: argument(remove_flags_t{})

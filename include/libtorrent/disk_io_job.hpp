@@ -110,6 +110,11 @@ namespace libtorrent {
 		// on a cache piece that may be flushed soon
 		static constexpr disk_job_flags_t in_progress = 2_bit;
 
+		// this is set for jobs that we're no longer interested in. Any aborted
+		// job that's executed should immediately fail with operation_aborted
+		// instead of executing
+		static constexpr disk_job_flags_t aborted = 6_bit;
+
 		// for write jobs, returns true if its block
 		// is not dirty anymore
 		bool completed(cached_piece_entry const* pe, int block_size);
@@ -120,7 +125,7 @@ namespace libtorrent {
 		boost::variant<disk_buffer_holder
 			, std::string
 			, add_torrent_params const*
-			, aux::vector<std::uint8_t, file_index_t>
+			, aux::vector<download_priority_t, file_index_t>
 			, remove_flags_t
 			> argument;
 
@@ -156,7 +161,7 @@ namespace libtorrent {
 		{
 			un() {}
 			// result for hash jobs
-			char piece_hash[20];
+			sha1_hash piece_hash;
 
 			// this is used for check_fastresume to pass in a vector of hard-links
 			// to create. Each element corresponds to a file in the file_storage.

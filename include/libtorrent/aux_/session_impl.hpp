@@ -141,7 +141,7 @@ namespace aux {
 		// listen_socket_t should not be copied or moved because
 		// references to it are held by the DHT and tracker announce
 		// code. That code expects a listen_socket_t to always refer
-		// to the same socket. It would be easy to accidently
+		// to the same socket. It would be easy to accidentally
 		// invalidate that assumption if copying or moving were allowed.
 		listen_socket_t(listen_socket_t const&) = delete;
 		listen_socket_t(listen_socket_t&&) = delete;
@@ -249,8 +249,8 @@ namespace aux {
 #if TORRENT_USE_INVARIANT_CHECKS
 			friend class libtorrent::invariant_access;
 #endif
-			typedef std::set<std::shared_ptr<peer_connection>> connection_map;
-			typedef std::unordered_map<sha1_hash, std::shared_ptr<torrent>> torrent_map;
+			using connection_map = std::set<std::shared_ptr<peer_connection>>;
+			using torrent_map = std::unordered_map<sha1_hash, std::shared_ptr<torrent>>;
 
 			explicit session_impl(io_service& ios);
 			~session_impl() override;
@@ -284,15 +284,16 @@ namespace aux {
 			// this is set while the session is building the
 			// torrent status update message
 			bool m_posting_torrent_updates = false;
-			bool verify_queue_position(torrent const* t, int pos) override;
+			bool verify_queue_position(torrent const* t, queue_position_t pos) override;
 #endif
 
 			void on_exception(std::exception const& e) override;
 			void on_error(error_code const& ec) override;
 
 			void on_ip_change(error_code const& ec);
-			void reopen_listen_sockets();
+			void reopen_listen_sockets(bool map_ports = true);
 			void reopen_outgoing_sockets();
+			void reopen_network_sockets(reopen_network_flags_t options);
 
 			torrent_peer_allocator_interface& get_peer_allocator() override
 			{ return m_peer_allocator; }
@@ -300,10 +301,10 @@ namespace aux {
 			io_service& get_io_service() override { return m_io_service; }
 			resolver_interface& get_resolver() override { return m_host_resolver; }
 
-			aux::vector<torrent*>& torrent_list(int i) override
+			aux::vector<torrent*>& torrent_list(torrent_list_index_t i) override
 			{
-				TORRENT_ASSERT(i >= 0);
-				TORRENT_ASSERT(i < session_interface::num_torrent_lists);
+				TORRENT_ASSERT(i >= torrent_list_index_t{});
+				TORRENT_ASSERT(i < m_torrent_lists.end_index());
 				return m_torrent_lists[i];
 			}
 
@@ -347,7 +348,7 @@ namespace aux {
 #endif
 			std::shared_ptr<torrent> delay_load_torrent(sha1_hash const& info_hash
 				, peer_connection* pc) override;
-			void set_queue_position(torrent* t, int p) override;
+			void set_queue_position(torrent* t, queue_position_t p) override;
 
 			peer_id const& get_peer_id() const override { return m_peer_id; }
 
@@ -613,10 +614,12 @@ namespace aux {
 				, error_code const& e);
 #endif
 
+			void start_ip_notifier();
 			void start_lsd();
 			natpmp* start_natpmp();
 			upnp* start_upnp();
 
+			void stop_ip_notifier();
 			void stop_lsd();
 			void stop_natpmp();
 			void stop_upnp();
@@ -714,6 +717,7 @@ namespace aux {
 			void update_max_failcount();
 			void update_resolver_cache_timeout();
 
+			void update_ip_notifier();
 			void update_upnp();
 			void update_natpmp();
 			void update_lsd();
@@ -739,7 +743,8 @@ namespace aux {
 			// negative, return INT_MAX
 			int get_int_setting(int n) const;
 
-			aux::vector<torrent*> m_torrent_lists[num_torrent_lists];
+			aux::array<aux::vector<torrent*>, num_torrent_lists, torrent_list_index_t>
+				m_torrent_lists;
 
 			peer_class_pool m_classes;
 
@@ -829,11 +834,15 @@ namespace aux {
 			resolver m_host_resolver;
 
 			tracker_manager m_tracker_manager;
+
+			// the torrents must be destructed after the torrent_peer_allocator,
+			// since the torrents hold the peer lists that own the torrent_peers
+			// (which are allocated in the torrent_peer_allocator)
 			torrent_map m_torrents;
 
 			// all torrents that are downloading or queued,
 			// ordered by their queue position
-			aux::vector<torrent*> m_download_queue;
+			aux::vector<torrent*, queue_position_t> m_download_queue;
 
 #if !defined(TORRENT_DISABLE_ENCRYPTION) && !defined(TORRENT_DISABLE_EXTENSIONS)
 			// this maps obfuscated hashes to torrents. It's only

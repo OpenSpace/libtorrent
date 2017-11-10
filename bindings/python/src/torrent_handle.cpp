@@ -67,24 +67,22 @@ namespace
           handle.piece_availability(avail);
       }
 
-      for (std::vector<int>::iterator i(avail.begin())
-          , end(avail.end()); i != end; ++i)
-          ret.append(*i);
+      for (auto const a : avail)
+          ret.append(a);
       return ret;
   }
 
   list piece_priorities(torrent_handle& handle)
   {
       list ret;
-      std::vector<int> prio;
+      std::vector<download_priority_t> prio;
       {
           allow_threading_guard guard;
-          prio = handle.piece_priorities();
+          prio = handle.get_piece_priorities();
       }
 
-      for (std::vector<int>::iterator i(prio.begin())
-          , end(prio.end()); i != end; ++i)
-          ret.append(*i);
+      for (auto const p : prio)
+          ret.append(p);
       return ret;
   }
 
@@ -145,47 +143,47 @@ void prioritize_pieces(torrent_handle& info, object o)
 
    // determine which overload should be selected. the one taking a list of
    // priorities or the one taking a list of piece -> priority mappings
-   bool const is_piece_list = extract<std::pair<piece_index_t, int>>(*begin).check();
+   bool const is_piece_list = extract<std::pair<piece_index_t, download_priority_t>>(*begin).check();
 
    if (is_piece_list)
    {
-      std::vector<std::pair<piece_index_t, int>> piece_list;
+      std::vector<std::pair<piece_index_t, download_priority_t>> piece_list;
       std::transform(begin, end, std::back_inserter(piece_list)
-         , &extract_fn<std::pair<piece_index_t, int>>);
+         , &extract_fn<std::pair<piece_index_t, download_priority_t>>);
       info.prioritize_pieces(piece_list);
    }
    else
    {
-      std::vector<int> priority_vector;
+      std::vector<download_priority_t> priority_vector;
       std::transform(begin, end, std::back_inserter(priority_vector)
-         , &extract_fn<int>);
+         , &extract_fn<download_priority_t>);
       info.prioritize_pieces(priority_vector);
    }
 }
 
 void prioritize_files(torrent_handle& info, object o)
 {
-   stl_input_iterator<int const> begin(o), end;
-   info.prioritize_files(std::vector<int> (begin, end));
+   stl_input_iterator<download_priority_t> begin(o), end;
+   info.prioritize_files(std::vector<download_priority_t>(begin, end));
 }
 
 list file_priorities(torrent_handle& handle)
 {
     list ret;
-    std::vector<int> priorities = handle.file_priorities();
+    std::vector<download_priority_t> priorities = handle.get_file_priorities();
 
-    for (std::vector<int>::iterator i = priorities.begin(); i != priorities.end(); ++i)
-        ret.append(*i);
+    for (auto const p : priorities)
+        ret.append(p);
 
     return ret;
 }
 
-int file_prioritity0(torrent_handle& h, file_index_t index)
+download_priority_t file_prioritity0(torrent_handle& h, file_index_t index)
 {
    return h.file_priority(index);
 }
 
-void file_prioritity1(torrent_handle& h, file_index_t index, int prio)
+void file_prioritity1(torrent_handle& h, file_index_t index, download_priority_t prio)
 {
    return h.file_priority(index, prio);
 }
@@ -448,8 +446,8 @@ void bind_torrent_handle()
     void (torrent_handle::*set_flags0)(torrent_flags_t) const = &torrent_handle::set_flags;
     void (torrent_handle::*set_flags1)(torrent_flags_t, torrent_flags_t) const = &torrent_handle::set_flags;
 
-    int (torrent_handle::*piece_priority0)(piece_index_t) const = &torrent_handle::piece_priority;
-    void (torrent_handle::*piece_priority1)(piece_index_t, int) const = &torrent_handle::piece_priority;
+    download_priority_t (torrent_handle::*piece_priority0)(piece_index_t) const = &torrent_handle::piece_priority;
+    void (torrent_handle::*piece_priority1)(piece_index_t, download_priority_t) const = &torrent_handle::piece_priority;
 
     void (torrent_handle::*move_storage0)(std::string const&, lt::move_flags_t) const = &torrent_handle::move_storage;
     void (torrent_handle::*rename_file0)(file_index_t, std::string const&) const = &torrent_handle::rename_file;
@@ -518,9 +516,9 @@ void bind_torrent_handle()
         .def("piece_priority", _(piece_priority0))
         .def("piece_priority", _(piece_priority1))
         .def("prioritize_pieces", &prioritize_pieces)
-        .def("piece_priorities", &piece_priorities)
+        .def("get_piece_priorities", &piece_priorities)
         .def("prioritize_files", &prioritize_files)
-        .def("file_priorities", &file_priorities)
+        .def("get_file_priorities", &file_priorities)
         .def("file_priority", &file_prioritity0)
         .def("file_priority", &file_prioritity1)
         .def("file_status", _(file_status0))
@@ -553,6 +551,8 @@ void bind_torrent_handle()
         .def("unset_flags", _(&torrent_handle::unset_flags))
         // deprecated
 #ifndef TORRENT_NO_DEPRECATE
+        .def("piece_priorities", &piece_priorities)
+        .def("file_priorities", &file_priorities)
         .def("stop_when_ready", _(&torrent_handle::stop_when_ready))
         .def("super_seeding", super_seeding1)
         .def("auto_managed", _(&torrent_handle::auto_managed))

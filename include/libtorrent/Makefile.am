@@ -161,6 +161,7 @@ nobase_include_HEADERS = \
   web_peer_connection.hpp      \
   xml_parse.hpp                \
   span.hpp                     \
+  download_priority.hpp        \
   \
   aux_/allocating_handler.hpp       \
   aux_/aligned_storage.hpp          \
@@ -216,6 +217,7 @@ nobase_include_HEADERS = \
   extensions/ut_metadata.hpp        \
   extensions/ut_pex.hpp             \
   \
+  kademlia/dht_settings.hpp         \
   kademlia/dht_state.hpp            \
   kademlia/dht_storage.hpp          \
   kademlia/dht_tracker.hpp          \

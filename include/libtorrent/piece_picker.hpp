@@ -58,6 +58,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/vector.hpp"
 #include "libtorrent/aux_/typed_span.hpp"
 #include "libtorrent/alert_types.hpp" // for picker_flags_t
+#include "libtorrent/download_priority.hpp"
 
 namespace libtorrent {
 
@@ -176,7 +177,7 @@ namespace libtorrent {
 			std::uint16_t outstanding_hash_check:1;
 		};
 
-		piece_picker();
+		piece_picker(int blocks_per_piece, int blocks_in_last_piece, int total_num_pieces);
 
 		void get_availability(aux::vector<int, piece_index_t>& avail) const;
 		int get_availability(piece_index_t piece) const;
@@ -215,7 +216,7 @@ namespace libtorrent {
 		piece_index_t reverse_cursor() const { return m_reverse_cursor; }
 
 		// sets all pieces to dont-have
-		void init(int blocks_per_piece, int blocks_in_last_piece, int total_num_pieces);
+		void resize(int blocks_per_piece, int blocks_in_last_piece, int total_num_pieces);
 		int num_pieces() const { return int(m_piece_map.size()); }
 
 		bool have_piece(piece_index_t index) const;
@@ -232,13 +233,13 @@ namespace libtorrent {
 		// sets the priority of a piece.
 		// returns true if the priority was changed from 0 to non-0
 		// or vice versa
-		bool set_piece_priority(piece_index_t index, int prio);
+		bool set_piece_priority(piece_index_t index, download_priority_t prio);
 
 		// returns the priority for the piece at 'index'
-		int piece_priority(piece_index_t index) const;
+		download_priority_t piece_priority(piece_index_t index) const;
 
 		// returns the current piece priorities for all pieces
-		void piece_priorities(std::vector<int>& pieces) const;
+		void piece_priorities(std::vector<download_priority_t>& pieces) const;
 
 		// pieces should be the vector that represents the pieces a
 		// client has. It returns a list of all pieces that this client
@@ -457,7 +458,7 @@ namespace libtorrent {
 			piece_pos(int const peer_count_, int const index_)
 				: peer_count(static_cast<std::uint16_t>(peer_count_))
 				, download_state(piece_pos::piece_open)
-				, piece_priority(4)
+				, piece_priority(static_cast<std::uint8_t>(default_priority))
 				, index(index_)
 			{
 				TORRENT_ASSERT(peer_count_ >= 0);

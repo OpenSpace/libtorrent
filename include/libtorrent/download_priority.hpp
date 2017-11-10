@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2014, Steven Siloti
+Copyright (c) 2017, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,64 +30,22 @@ POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#ifndef TORRENT_DIRECT_REQUEST_HPP
-#define TORRENT_DIRECT_REQUEST_HPP
+#ifndef TORRENT_DOWNLOAD_PRIORITY_HPP_INCLUDED
+#define TORRENT_DOWNLOAD_PRIORITY_HPP_INCLUDED
 
-#include <libtorrent/kademlia/msg.hpp>
-#include <libtorrent/kademlia/traversal_algorithm.hpp>
+#include "libtorrent/units.hpp"
 
-namespace libtorrent { namespace dht {
+namespace libtorrent {
 
-struct direct_traversal : traversal_algorithm
-{
-	typedef std::function<void(dht::msg const&)> message_callback;
+struct download_priority_tag;
+using download_priority_t = aux::strong_typedef<std::uint8_t, download_priority_tag>;
 
-	direct_traversal(node& node
-		, node_id const& target
-		, message_callback cb)
-		: traversal_algorithm(node, target)
-		, m_cb(cb)
-	{}
+constexpr download_priority_t dont_download{0};
+constexpr download_priority_t default_priority{4};
+constexpr download_priority_t low_priority{1};
+constexpr download_priority_t top_priority{7};
 
-	char const* name() const override { return "direct_traversal"; }
+}
 
-	void invoke_cb(msg const& m)
-	{
-		if (m_cb)
-		{
-			m_cb(m);
-			m_cb = nullptr;
-			done();
-		}
-	}
+#endif
 
-protected:
-	message_callback m_cb;
-};
-
-struct direct_observer : observer
-{
-	direct_observer(std::shared_ptr<traversal_algorithm> algo
-		, udp::endpoint const& ep, node_id const& id)
-		: observer(std::move(algo), ep, id)
-	{}
-
-	void reply(msg const& m) override
-	{
-		flags |= flag_done;
-		static_cast<direct_traversal*>(algorithm())->invoke_cb(m);
-	}
-
-	void timeout() override
-	{
-		if (flags & flag_done) return;
-		flags |= flag_done;
-		bdecode_node e;
-		msg m(e, target_ep());
-		static_cast<direct_traversal*>(algorithm())->invoke_cb(m);
-	}
-};
-
-}} // namespace libtorrent::dht
-
-#endif //TORRENT_DIRECT_REQUEST_HPP
