@@ -38,6 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/torrent.hpp"
 #include "libtorrent/lazy_entry.hpp"
 #include "libtorrent/peer_class.hpp"
+#include "libtorrent/peer_class_type_filter.hpp"
 
 #ifndef TORRENT_NO_DEPRECATE
 #include "libtorrent/read_resume_data.hpp"
@@ -54,8 +55,8 @@ namespace libtorrent {
 	constexpr save_state_flags_t session_handle::save_settings;
 	constexpr save_state_flags_t session_handle::save_dht_settings;
 	constexpr save_state_flags_t session_handle::save_dht_state;
-	constexpr save_state_flags_t session_handle::save_encryption_settings;
 #ifndef TORRENT_NO_DEPRECATE
+	constexpr save_state_flags_t session_handle::save_encryption_settings;
 	constexpr save_state_flags_t session_handle::save_as_map TORRENT_DEPRECATED_ENUM;
 	constexpr save_state_flags_t session_handle::save_proxy TORRENT_DEPRECATED_ENUM;
 	constexpr save_state_flags_t session_handle::save_i2p_proxy TORRENT_DEPRECATED_ENUM;
@@ -397,7 +398,7 @@ namespace {
 		// we cannot capture a unique_ptr into a lambda in c++11, so we use a raw
 		// pointer for now. async_call uses a lambda expression to post the call
 		// to the main thread
-		add_torrent_params* p = new add_torrent_params(std::move(params));
+		auto* p = new add_torrent_params(std::move(params));
 		p->save_path = complete(p->save_path);
 
 #ifndef TORRENT_NO_DEPRECATE
@@ -418,7 +419,7 @@ namespace {
 		, bool paused
 		, storage_constructor_type sc)
 	{
-		add_torrent_params p(sc);
+		add_torrent_params p(std::move(sc));
 		p.ti = std::make_shared<torrent_info>(ti);
 		p.save_path = save_path;
 		if (resume_data.type() != entry::undefined_t)
@@ -444,7 +445,7 @@ namespace {
 	{
 		TORRENT_ASSERT_PRECOND(!save_path.empty());
 
-		add_torrent_params p(sc);
+		add_torrent_params p(std::move(sc));
 		p.trackers.push_back(tracker_url);
 		p.info_hash = info_hash;
 		p.save_path = save_path;
@@ -802,16 +803,18 @@ namespace {
 		p.set_str(settings_pack::peer_fingerprint, id.to_string());
 		apply_settings(std::move(p));
 	}
+
+	void session_handle::set_key(std::uint32_t)
+	{
+		// this is just a dummy function now, as we generate the key automatically
+		// per listen interface
+	}
+
 #endif
 
 	peer_id session_handle::id() const
 	{
 		return sync_call_ret<peer_id>(&session_impl::get_peer_id);
-	}
-
-	void session_handle::set_key(std::uint32_t key)
-	{
-		async_call(&session_impl::set_key, key);
 	}
 
 	unsigned short session_handle::listen_port() const
@@ -836,9 +839,19 @@ namespace {
 		async_call(&session_impl::set_peer_class_filter, f);
 	}
 
+	ip_filter session_handle::get_peer_class_filter() const
+	{
+		return sync_call_ret<ip_filter>(&session_impl::get_peer_class_filter);
+	}
+
 	void session_handle::set_peer_class_type_filter(peer_class_type_filter const& f)
 	{
 		async_call(&session_impl::set_peer_class_type_filter, f);
+	}
+
+	peer_class_type_filter session_handle::get_peer_class_type_filter() const
+	{
+		return sync_call_ret<peer_class_type_filter>(&session_impl::get_peer_class_type_filter);
 	}
 
 	peer_class_t session_handle::create_peer_class(char const* name)
@@ -879,7 +892,7 @@ namespace {
 		if (net_interface == nullptr || strlen(net_interface) == 0)
 			net_interface = "0.0.0.0";
 
-		interfaces_str = print_endpoint(tcp::endpoint(address::from_string(net_interface, ec), std::uint16_t(port_range.first)));
+		interfaces_str = print_endpoint(tcp::endpoint(make_address(net_interface, ec), std::uint16_t(port_range.first)));
 		if (ec) return;
 
 		p.set_str(settings_pack::listen_interfaces, interfaces_str);
@@ -1128,6 +1141,13 @@ namespace {
 		std::shared_ptr<session_impl> s = m_impl.lock();
 		if (!s) aux::throw_ex<system_error>(errors::invalid_session_handle);
 		s->alerts().set_notify_function(fun);
+	}
+
+	dropped_alerts_t session_handle::dropped_alerts()
+	{
+		std::shared_ptr<session_impl> s = m_impl.lock();
+		if (!s) aux::throw_ex<system_error>(errors::invalid_session_handle);
+		return s->alerts().dropped_alerts();
 	}
 
 #ifndef TORRENT_NO_DEPRECATE

@@ -128,6 +128,12 @@ namespace aux {
 		struct tracker_logger;
 #endif
 
+	enum class duplex : std::uint8_t
+	{
+		accept_incoming,
+		only_outgoing
+	};
+
 	struct listen_socket_t
 	{
 		listen_socket_t()
@@ -181,6 +187,8 @@ namespace aux {
 		// indicates whether this is an SSL listen socket or not
 		transport ssl = transport::plaintext;
 
+		duplex incoming = duplex::accept_incoming;
+
 		// the actual sockets (TCP listen socket and UDP socket)
 		// An entry does not necessarily have a UDP or TCP socket. One of these
 		// pointers may be nullptr!
@@ -190,12 +198,21 @@ namespace aux {
 		// which alias the listen_socket_t shared_ptr
 		std::shared_ptr<tcp::acceptor> sock;
 		std::shared_ptr<aux::session_udp_socket> udp_sock;
+
+		// since udp packets are expected to be dispatched frequently, this saves
+		// time on handler allocation every time we read again.
+		aux::handler_storage<TORRENT_READ_HANDLER_MAX_SIZE> udp_handler_storage;
+
+		// the key is an id that is used to identify the
+		// client with the tracker only.
+		std::uint32_t tracker_key = 0;
 	};
 
 		struct TORRENT_EXTRA_EXPORT listen_endpoint_t
 		{
-			listen_endpoint_t(address adr, int p, std::string dev, transport s)
-				: addr(adr), port(p), device(dev), ssl(s) {}
+			listen_endpoint_t(address adr, int p, std::string dev, transport s
+				, duplex d = duplex::accept_incoming)
+				: addr(adr), port(p), device(dev), ssl(s), incoming(d) {}
 
 			bool operator==(listen_endpoint_t const& o) const
 			{
@@ -206,6 +223,7 @@ namespace aux {
 			int port;
 			std::string device;
 			transport ssl;
+			duplex incoming;
 		};
 
 		// partitions sockets based on whether they match one of the given endpoints
@@ -252,12 +270,19 @@ namespace aux {
 			using connection_map = std::set<std::shared_ptr<peer_connection>>;
 			using torrent_map = std::unordered_map<sha1_hash, std::shared_ptr<torrent>>;
 
-			explicit session_impl(io_service& ios);
+			session_impl(io_service& ios, settings_pack const& pack);
 			~session_impl() override;
 
-			void start_session(settings_pack pack);
+			void start_session();
 
 			void init_peer_class_filter(bool unlimited_local);
+
+			void call_abort()
+			{
+				auto ptr = shared_from_this();
+				m_io_service.dispatch(make_handler([ptr] { ptr->abort(); }
+					, m_abort_handler_storage, *this));
+			}
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
 			using ext_function_t
@@ -352,11 +377,10 @@ namespace aux {
 
 			peer_id const& get_peer_id() const override { return m_peer_id; }
 
-			void close_connection(peer_connection* p) override;
+			void close_connection(peer_connection* p) noexcept override;
 
 			void apply_settings_pack(std::shared_ptr<settings_pack> pack) override;
-			void apply_settings_pack_impl(settings_pack const& pack
-				, bool const init = false);
+			void apply_settings_pack_impl(settings_pack const& pack);
 			session_settings const& settings() const override { return m_settings; }
 			settings_pack get_settings() const;
 
@@ -457,7 +481,7 @@ namespace aux {
 			peer_class_pool& peer_classes() override { return m_classes; }
 			bool ignore_unchoke_slots_set(peer_class_set const& set) const override;
 			int copy_pertinent_channels(peer_class_set const& set
-				, int channel, bandwidth_channel** dst, int max) override;
+				, int channel, bandwidth_channel** dst, int m) override;
 			int use_quota_overhead(peer_class_set& set, int amount_down, int amount_up) override;
 			bool use_quota_overhead(bandwidth_channel* ch, int amount);
 
@@ -549,12 +573,12 @@ namespace aux {
 
 			int peak_up_rate() const { return m_peak_up_rate; }
 
-			void trigger_unchoke() override
+			void trigger_unchoke() noexcept override
 			{
 				TORRENT_ASSERT(is_single_thread());
 				m_unchoke_time_scaler = 0;
 			}
-			void trigger_optimistic_unchoke() override
+			void trigger_optimistic_unchoke() noexcept override
 			{
 				TORRENT_ASSERT(is_single_thread());
 				m_optimistic_unchoke_time_scaler = 0;
@@ -573,6 +597,8 @@ namespace aux {
 			std::uint16_t ssl_listen_port() const override;
 			std::uint16_t ssl_listen_port(listen_socket_t* sock) const;
 
+			std::uint32_t get_tracker_key(address const& iface) const;
+
 			void for_each_listen_socket(std::function<void(aux::listen_socket_handle const&)> f) override
 			{
 				for (auto& s : m_listen_sockets)
@@ -584,8 +610,8 @@ namespace aux {
 			alert_manager& alerts() override { return m_alerts; }
 			disk_interface& disk_thread() override { return m_disk_thread; }
 
-			void abort();
-			void abort_stage2();
+			void abort() noexcept;
+			void abort_stage2() noexcept;
 
 			torrent_handle find_torrent_handle(sha1_hash const& info_hash);
 
@@ -675,6 +701,7 @@ namespace aux {
 			// implements session_interface
 			tcp::endpoint bind_outgoing_socket(socket_type& s, address
 				const& remote_address, error_code& ec) const override;
+			bool verify_incoming_interface(address const& addr);
 			bool verify_bound_address(address const& addr, bool utp
 				, error_code& ec) override;
 
@@ -690,6 +717,9 @@ namespace aux {
 #endif
 
 			void inc_boost_connections() override { ++m_boost_connections; }
+
+			// the settings for the client
+			aux::session_settings m_settings;
 
 #ifndef TORRENT_NO_DEPRECATE
 			void update_ssl_listen();
@@ -748,8 +778,8 @@ namespace aux {
 
 			peer_class_pool m_classes;
 
-			void init(std::shared_ptr<settings_pack> pack);
-			void init_dht();
+			void init();
+//			void init_dht();
 
 			void submit_disk_jobs();
 
@@ -761,15 +791,14 @@ namespace aux {
 			void set_external_address(std::shared_ptr<listen_socket_t> const& sock, address const& ip
 				, ip_source_t const source_type, address const& source);
 
-			void interface_to_endpoints(std::string const& device, int const port
-				, bool const ssl, std::vector<listen_endpoint_t>& eps);
-
-			// the settings for the client
-			aux::session_settings m_settings;
+			void interface_to_endpoints(std::string const& device, int port
+				, transport ssl, duplex incoming, std::vector<listen_endpoint_t>& eps);
 
 			counters m_stats_counters;
 
 			// this is a pool allocator for torrent_peer objects
+			// torrents and the disk cache (implicitly by holding references to the
+			// torrents) depend on this outliving them.
 			torrent_peer_allocator m_peer_allocator;
 
 			// this vector is used to store the block_info
@@ -895,11 +924,6 @@ namespace aux {
 			// the peer id that is generated at the start of the session
 			peer_id m_peer_id;
 
-			// the key is an id that is used to identify the
-			// client with the tracker only. It is randomized
-			// at startup
-			std::uint32_t m_key = 0;
-
 			// posts a notification when the set of local IPs changes
 			std::unique_ptr<ip_change_notifier> m_ip_notifier;
 
@@ -937,8 +961,8 @@ namespace aux {
 			// round-robin index into m_outgoing_interfaces
 			mutable std::uint8_t m_interface_index = 0;
 
-			std::shared_ptr<listen_socket_t> setup_listener(std::string const& device
-				, tcp::endpoint bind_ep, transport ssl, error_code& ec);
+			std::shared_ptr<listen_socket_t> setup_listener(
+				listen_endpoint_t const& lep, error_code& ec);
 
 #ifndef TORRENT_DISABLE_DHT
 			dht::dht_state m_dht_state;
@@ -1165,13 +1189,12 @@ namespace aux {
 			deadline_timer m_timer;
 			aux::handler_storage<TORRENT_READ_HANDLER_MAX_SIZE> m_tick_handler_storage;
 
-			template <class Handler>
-			aux::allocating_handler<Handler, TORRENT_READ_HANDLER_MAX_SIZE>
-			make_tick_handler(Handler const& handler)
-			{
-				return aux::allocating_handler<Handler, TORRENT_READ_HANDLER_MAX_SIZE>(
-					handler, m_tick_handler_storage, *this);
-			}
+			// abort may not fail and cannot allocate memory
+#ifdef _M_AMD64
+			aux::handler_storage<88> m_abort_handler_storage;
+#else
+			aux::handler_storage<56> m_abort_handler_storage;
+#endif
 
 			// torrents are announced on the local network in a
 			// round-robin fashion. All torrents are cycled through
@@ -1238,7 +1261,7 @@ namespace aux {
 
 #ifndef TORRENT_DISABLE_LOGGING
 			bool should_log() const override;
-			void session_log(char const* fmt, ...) const override TORRENT_FORMAT(2,3);
+			void session_log(char const* fmt, ...) const noexcept override TORRENT_FORMAT(2,3);
 #endif
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
@@ -1288,10 +1311,10 @@ namespace aux {
 				, std::list<address> const& ip_list
 				, struct tracker_response const& resp) override;
 			void tracker_request_error(tracker_request const& r
-				, int response_code, error_code const& ec, const std::string& str
+				, error_code const& ec, const std::string& str
 				, seconds32 retry_interval) override;
 			bool should_log() const override;
-			void debug_log(const char* fmt, ...) const override TORRENT_FORMAT(2,3);
+			void debug_log(const char* fmt, ...) const noexcept override TORRENT_FORMAT(2,3);
 			session_interface& m_ses;
 		private:
 			// explicitly disallow assignment, to silence msvc warning

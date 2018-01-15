@@ -51,6 +51,8 @@ extensions
   scale well with the size of the content.
 * share-mode. This is a special mode torrents can be put in to optimize share
   ratio rather than downloading the torrent.
+* supports the Magnet URI extension - Select specific file indices for
+  download. `BEP 53`_.
 
 .. _article: utp.html
 .. _extensions: manual-ref.html#extensions
@@ -290,11 +292,8 @@ code to implement a simple bittorrent client::
 	// usage a.out [torrent-file]
 	int main(int argc, char* argv[]) try
 	{
-		using namespace libtorrent;
-
-		session s;
-		s.listen_on(std::make_pair(6881, 6889));
-		add_torrent_params p;
+		lt::session s;
+		lt::add_torrent_params p;
 		p.save_path = "./";
 		p.ti = new torrent_info(argv[1]);
 		s.add_torrent(p);
@@ -322,10 +321,11 @@ portability
 
 libtorrent runs on most major operating systems, including Windows,
 MacOS X, Linux, BSD and Solaris.
-It uses Boost.Thread, Boost.Filesystem, Boost.Date_time and various other
-boost libraries. At least version 1.46.1 of boost is required.
+It uses Boost.Asio, Boost.Optional, Boost.System, Boost.Multiprecision,
+Boost.Intrusive, Boost.Pool, Boost.Python (for bindings), Boost.CRC and various
+other boost libraries. At least version 1.49 of boost is required.
 
-libtorrent uses asio, hence it will take full advantage of high performance
+Since libtorrent uses Boost.Asio it will take full advantage of high performance
 network APIs on the most popular platforms. I/O completion ports on windows,
 epoll on linux and kqueue on MacOS X and BSD.
 

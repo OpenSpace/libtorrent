@@ -62,7 +62,7 @@ namespace libtorrent {
 		, tracker_manager& man
 		, tracker_request const& req
 		, std::weak_ptr<request_callback> c)
-		: tracker_connection(man, req, ios, c)
+		: tracker_connection(man, req, ios, std::move(c))
 		, m_transaction_id(0)
 		, m_attempts(0)
 		, m_state(action_t::error)
@@ -125,7 +125,7 @@ namespace libtorrent {
 			, settings.get_int(settings_pack::tracker_receive_timeout));
 	}
 
-	void udp_tracker_connection::fail(error_code const& ec, int code
+	void udp_tracker_connection::fail(error_code const& ec
 		, char const* msg, seconds32 const interval, seconds32 const min_interval)
 	{
 		// m_target failed. remove it from the endpoint list
@@ -138,7 +138,7 @@ namespace libtorrent {
 		// fail the whole announce
 		if (m_endpoints.empty() || !tracker_req().outgoing_socket)
 		{
-			tracker_connection::fail(ec, code, msg, interval, min_interval);
+			tracker_connection::fail(ec, msg, interval, min_interval);
 			return;
 		}
 
@@ -146,7 +146,7 @@ namespace libtorrent {
 		std::shared_ptr<request_callback> cb = requester();
 		if (cb && cb->should_log())
 		{
-			cb->debug_log("*** UDP_TRACKER [ host: \"%s\" ip: \"%s\" | error: \"%s\" ]"
+			cb->debug_log(R"(*** UDP_TRACKER [ host: "%s" ip: "%s" | error: "%s" ])"
 				, m_hostname.c_str(), print_endpoint(m_target).c_str(), ec.message().c_str());
 		}
 #endif
@@ -157,7 +157,7 @@ namespace libtorrent {
 #ifndef TORRENT_DISABLE_LOGGING
 		if (cb && cb->should_log())
 		{
-			cb->debug_log("*** UDP_TRACKER trying next IP [ host: \"%s\" ip: \"%s\" ]"
+			cb->debug_log(R"(*** UDP_TRACKER trying next IP [ host: "%s" ip: "%s" ])"
 				, m_hostname.c_str(), print_endpoint(m_target).c_str());
 		}
 #endif
@@ -280,7 +280,7 @@ namespace libtorrent {
 					char const* bind_address_type = bind_interface().is_v4() ? "IPv4" : "IPv6";
 					char msg[200];
 					std::snprintf(msg, sizeof(msg)
-						, "the tracker only resolves to an %s  address, and you're "
+						, "the tracker only resolves to an %s address, and you're "
 						"listening on an %s socket. This may prevent you from receiving "
 						"incoming connections."
 						, tracker_address_type, bind_address_type);
@@ -424,7 +424,7 @@ namespace libtorrent {
 
 		if (action == action_t::error)
 		{
-			fail(error_code(errors::tracker_failure), -1
+			fail(error_code(errors::tracker_failure)
 				, std::string(buf.data(), buf.size()).c_str());
 			return true;
 		}
@@ -702,7 +702,7 @@ namespace libtorrent {
 
 		if (action == action_t::error)
 		{
-			fail(error_code(errors::tracker_failure), -1
+			fail(error_code(errors::tracker_failure)
 				, std::string(buf.data(), buf.size()).c_str());
 			return true;
 		}
@@ -770,7 +770,7 @@ namespace libtorrent {
 			&& !settings.get_str(settings_pack::announce_ip).empty())
 		{
 			error_code ec;
-			address ip = address::from_string(settings.get_str(settings_pack::announce_ip).c_str(), ec);
+			address ip = make_address(settings.get_str(settings_pack::announce_ip).c_str(), ec);
 			if (!ec && ip.is_v4()) announce_ip = ip.to_v4();
 		}
 		aux::write_uint32(announce_ip.to_ulong(), out);

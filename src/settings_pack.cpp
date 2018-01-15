@@ -171,7 +171,7 @@ constexpr int CLOSE_FILE_INTERVAL = 0;
 		SET(no_recheck_incomplete_resume, false, nullptr),
 		SET(anonymous_mode, false, &session_impl::update_anonymous_mode),
 		SET(report_web_seed_downloads, true, &session_impl::update_report_web_seed_downloads),
-		DEPRECATED_SET(rate_limit_utp, false, &session_impl::update_rate_limit_utp),
+		DEPRECATED_SET(rate_limit_utp, true, &session_impl::update_rate_limit_utp),
 		DEPRECATED_SET(announce_double_nat, false, nullptr),
 		SET(seeding_outgoing_connections, true, nullptr),
 		SET(no_connect_privileged_ports, false, &session_impl::update_privileged_ports),
@@ -444,6 +444,28 @@ constexpr int CLOSE_FILE_INTERVAL = 0;
 		{
 			if (bool_settings[i].default_value == s.m_bools[std::size_t(i)]) continue;
 			sett[bool_settings[i].name] = s.m_bools[std::size_t(i)];
+		}
+	}
+
+	void run_all_updates(aux::session_impl& ses)
+	{
+		typedef void (aux::session_impl::*fun_t)();
+		for (int i = 0; i < settings_pack::num_string_settings; ++i)
+		{
+			fun_t const& f = str_settings[i].fun;
+			if (f) (ses.*f)();
+		}
+
+		for (int i = 0; i < settings_pack::num_int_settings; ++i)
+		{
+			fun_t const& f = int_settings[i].fun;
+			if (f) (ses.*f)();
+		}
+
+		for (int i = 0; i < settings_pack::num_bool_settings; ++i)
+		{
+			fun_t const& f = bool_settings[i].fun;
+			if (f) (ses.*f)();
 		}
 	}
 

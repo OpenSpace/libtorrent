@@ -82,8 +82,8 @@ private:
 	std::shared_ptr<socks5> self() { return shared_from_this(); }
 
 	void on_name_lookup(error_code const& e, tcp::resolver::iterator i);
-	void on_connect_timeout(error_code const& ec);
-	void on_connected(error_code const& ec);
+	void on_connect_timeout(error_code const& e);
+	void on_connected(error_code const& e);
 	void handshake1(error_code const& e);
 	void handshake2(error_code const& e);
 	void handshake3(error_code const& e);
@@ -160,7 +160,7 @@ udp_socket::udp_socket(io_service& ios)
 
 int udp_socket::read(span<packet> pkts, error_code& ec)
 {
-	int const num = int(pkts.size());
+	auto const num = int(pkts.size());
 	int ret = 0;
 	packet p;
 
@@ -249,7 +249,7 @@ void udp_socket::send_hostname(char const* hostname, int const port
 
 	// the overload that takes a hostname is really only supported when we're
 	// using a proxy
-	address target = address::from_string(hostname, ec);
+	address target = make_address(hostname, ec);
 	if (!ec) send(udp::endpoint(target, std::uint16_t(port)), p, ec, flags);
 }
 
@@ -350,7 +350,7 @@ bool udp_socket::unwrap(udp::endpoint& from, span<char>& buf)
 	using namespace libtorrent::detail;
 
 	// the minimum socks5 header size
-	int const size = aux::numeric_cast<int>(buf.size());
+	auto const size = aux::numeric_cast<int>(buf.size());
 	if (size <= 10) return false;
 
 	char* p = buf.data();
@@ -378,7 +378,7 @@ bool udp_socket::unwrap(udp::endpoint& from, span<char>& buf)
 		if (len > buf.end() - p) return false;
 		std::string hostname(p, p + len);
 		error_code ec;
-		address addr = address::from_string(hostname, ec);
+		address addr = make_address(hostname, ec);
 		// we only support "hostnames" that are a dotted decimal IP
 		if (ec) return false;
 		p += len;
@@ -447,8 +447,7 @@ void udp_socket::bind(udp::endpoint const& ep, error_code& ec)
 	if (ec) return;
 	m_socket.bind(ep, ec);
 	if (ec) return;
-	udp::socket::non_blocking_io ioc(true);
-	m_socket.io_control(ioc, ec);
+	m_socket.non_blocking(true, ec);
 	if (ec) return;
 
 	error_code err;
@@ -522,11 +521,11 @@ void socks5::on_name_lookup(error_code const& e, tcp::resolver::iterator i)
 		, self(), _1));
 }
 
-void socks5::on_connect_timeout(error_code const& ec)
+void socks5::on_connect_timeout(error_code const& e)
 {
 	COMPLETE_ASYNC("socks5::on_connect_timeout");
 
-	if (ec == boost::asio::error::operation_aborted) return;
+	if (e == boost::asio::error::operation_aborted) return;
 
 	if (m_abort) return;
 

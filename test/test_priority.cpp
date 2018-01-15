@@ -107,6 +107,9 @@ void test_transfer(settings_pack const& sett, bool test_deprecated = false)
 
 	pack.set_str(settings_pack::listen_interfaces, "0.0.0.0:48075");
 	pack.set_int(settings_pack::alert_mask, mask);
+#ifndef TORRENT_NO_DEPRECATE
+	pack.set_bool(settings_pack::rate_limit_utp, true);
+#endif
 
 	lt::session ses1(pack);
 
@@ -166,6 +169,7 @@ void test_transfer(settings_pack const& sett, bool test_deprecated = false)
 		}
 
 		TEST_CHECK(st1.state == torrent_status::seeding
+			|| st1.state == torrent_status::checking_resume_data
 			|| st1.state == torrent_status::checking_files);
 		TEST_CHECK(st2.state == torrent_status::downloading
 			|| st2.state == torrent_status::checking_resume_data);

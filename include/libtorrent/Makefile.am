@@ -80,6 +80,7 @@ nobase_include_HEADERS = \
   natpmp.hpp                   \
   netlink.hpp                  \
   operations.hpp               \
+  optional.hpp                 \
   packet_buffer.hpp            \
   packet_pool.hpp              \
   parse_url.hpp                \
@@ -96,6 +97,7 @@ nobase_include_HEADERS = \
   peer_id.hpp                  \
   peer_info.hpp                \
   peer_request.hpp             \
+  pex_flags.hpp                \
   piece_block.hpp              \
   piece_block_progress.hpp     \
   piece_picker.hpp             \
@@ -212,6 +214,7 @@ nobase_include_HEADERS = \
   aux_/array.hpp                    \
   aux_/ip_notifier.hpp              \
   aux_/noexcept_movable.hpp         \
+  aux_/torrent_impl.hpp             \
   \
   extensions/smart_ban.hpp          \
   extensions/ut_metadata.hpp        \

@@ -57,7 +57,7 @@ namespace libtorrent { namespace dht {
 	namespace {
 
 	// generate a new write token key every 5 minutes
-	time_duration const key_refresh
+	auto const key_refresh
 		= duration_cast<time_duration>(minutes(5));
 
 	void add_dht_counters(node const& dht, counters& c)
@@ -360,7 +360,8 @@ namespace libtorrent { namespace dht {
 
 	// these functions provide a slightly higher level
 	// interface to the get/put functionality in the DHT
-	void get_immutable_item_callback(item const& it, std::shared_ptr<get_immutable_item_ctx> ctx
+	void get_immutable_item_callback(item const& it
+		, std::shared_ptr<get_immutable_item_ctx> ctx
 		, std::function<void(item const&)> f)
 	{
 		// the reason to wrap here is to control the return value
@@ -575,7 +576,7 @@ namespace libtorrent { namespace dht {
 		, dht_observer* observer, counters& cnt
 		, get_foreign_node_t get_foreign_node
 		, dht_storage_interface& storage)
-		: dht(s, sock, settings, nid, observer, cnt, get_foreign_node, storage)
+		: dht(s, sock, settings, nid, observer, cnt, std::move(get_foreign_node), storage)
 		, connection_timer(ios)
 	{}
 
@@ -616,7 +617,7 @@ namespace libtorrent { namespace dht {
 		{
 			// use the local rather than external address because if the user is behind NAT
 			// we won't know the external IP on startup
-			ret.nids.push_back(std::make_pair(n.first.get_local_endpoint().address(), n.second.dht.nid()));
+			ret.nids.emplace_back(n.first.get_local_endpoint().address(), n.second.dht.nid());
 			auto nodes = save_nodes(n.second.dht);
 			ret.nodes.insert(ret.nodes.end(), nodes.begin(), nodes.end());
 		}

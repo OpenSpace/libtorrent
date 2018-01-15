@@ -38,6 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/aux_/session_impl.hpp"
 #include "libtorrent/peer_info.hpp"
 #include "libtorrent/hex.hpp" // for is_hex
+#include "libtorrent/optional.hpp"
 
 namespace libtorrent {
 
@@ -97,8 +98,7 @@ namespace libtorrent {
 
 	piece_block_progress http_seed_connection::downloading_piece_progress() const
 	{
-		if (m_requests.empty())
-			return piece_block_progress();
+		if (m_requests.empty()) return {};
 
 		std::shared_ptr<torrent> t = associated_torrent().lock();
 		TORRENT_ASSERT(t);
@@ -148,14 +148,14 @@ namespace libtorrent {
 		request.reserve(400);
 
 		int size = r.length;
-		const int block_size = t->block_size();
+		const int bs = t->block_size();
 		const int piece_size = t->torrent_file().piece_length();
 		peer_request pr;
 		while (size > 0)
 		{
 			int request_offset = r.start + r.length - size;
 			pr.start = request_offset % piece_size;
-			pr.length = std::min(block_size, size);
+			pr.length = std::min(bs, size);
 			pr.piece = piece_index_t(static_cast<int>(r.piece) + request_offset / piece_size);
 			m_requests.push_back(pr);
 			size -= pr.length;
@@ -274,7 +274,9 @@ namespace libtorrent {
 				// if the status code is not one of the accepted ones, abort
 				if (!is_ok_status(m_parser.status_code()))
 				{
-					int const retry_time = aux::numeric_cast<int>(m_parser.header_int("retry-after", 5 * 60));
+					auto const retry_time = value_or(m_parser.header_duration("retry-after")
+						, minutes32(5));
+
 					// temporarily unavailable, retry later
 					t->retry_web_seed(this, retry_time);
 
@@ -420,7 +422,7 @@ namespace libtorrent {
 
 				received_bytes(0, int(bytes_transferred));
 				// temporarily unavailable, retry later
-				t->retry_web_seed(this, retry_time);
+				t->retry_web_seed(this, seconds32(retry_time));
 				disconnect(error_code(m_parser.status_code(), http_category()), operation_t::bittorrent, 1);
 				return;
 			}

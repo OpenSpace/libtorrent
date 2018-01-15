@@ -137,14 +137,14 @@ namespace {
 				ec = bdecode_errors::expected_digit;
 				return start;
 			}
-			if (val > (std::numeric_limits<std::int64_t>::max)() / 10)
+			if (val > std::numeric_limits<std::int64_t>::max() / 10)
 			{
 				ec = bdecode_errors::overflow;
 				return start;
 			}
 			val *= 10;
 			int digit = *start - '0';
-			if (val > (std::numeric_limits<std::int64_t>::max)() - digit)
+			if (val > std::numeric_limits<std::int64_t>::max() - digit)
 			{
 				ec = bdecode_errors::overflow;
 				return start;
@@ -162,7 +162,7 @@ namespace {
 		std::string message(int ev) const override;
 		boost::system::error_condition default_error_condition(
 			int ev) const BOOST_SYSTEM_NOEXCEPT override
-		{ return boost::system::error_condition(ev, *this); }
+		{ return {ev, *this}; }
 	};
 
 	const char* bdecode_error_category::name() const BOOST_SYSTEM_NOEXCEPT
@@ -198,7 +198,7 @@ namespace {
 	{
 		boost::system::error_code make_error_code(error_code_enum e)
 		{
-			return boost::system::error_code(e, bdecode_category());
+			return {e, bdecode_category()};
 		}
 	}
 

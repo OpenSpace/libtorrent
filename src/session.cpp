@@ -38,6 +38,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/extensions.hpp"
 #include "libtorrent/aux_/session_impl.hpp"
 #include "libtorrent/aux_/session_call.hpp"
+#include "libtorrent/extensions.hpp" // for add_peer_flags_t
 
 namespace libtorrent {
 
@@ -60,6 +61,31 @@ namespace aux {
 	constexpr torrent_list_index_t session_interface::torrent_seeding_auto_managed;
 	constexpr torrent_list_index_t session_interface::torrent_checking_auto_managed;
 }
+
+#ifndef TORRENT_DISABLE_EXTENSIONS
+constexpr add_peer_flags_t torrent_plugin::first_time;
+constexpr add_peer_flags_t torrent_plugin::filtered;
+#endif
+
+namespace {
+
+#if defined TORRENT_ASIO_DEBUGGING
+	void wait_for_asio_handlers()
+	{
+		int counter = 0;
+		while (log_async())
+		{
+			std::this_thread::sleep_for(seconds(1));
+			++counter;
+			std::printf("\x1b[2J\x1b[0;0H\x1b[33m==== Waiting to shut down: %d ==== \x1b[0m\n\n"
+				, counter);
+		}
+		async_dec_threads();
+
+		std::fprintf(stderr, "\n\nEXPECTS NO MORE ASYNC OPS\n\n\n");
+	}
+#endif
+} // anonymous namespace
 
 	settings_pack min_memory_usage()
 	{
@@ -322,7 +348,7 @@ namespace aux {
 			ios = m_io_service.get();
 		}
 
-		m_impl = std::make_shared<aux::session_impl>(*ios);
+		m_impl = std::make_shared<aux::session_impl>(std::ref(*ios), std::ref(params.settings));
 		*static_cast<session_handle*>(this) = session_handle(m_impl);
 
 #ifndef TORRENT_DISABLE_EXTENSIONS
@@ -338,7 +364,7 @@ namespace aux {
 		m_impl->set_dht_storage(params.dht_storage_constructor);
 #endif
 
-		m_impl->start_session(std::move(params.settings));
+		m_impl->start_session();
 
 		if (internal_executor)
 		{
@@ -377,37 +403,26 @@ namespace {
 	session::~session()
 	{
 		aux::dump_call_profile();
-
 		TORRENT_ASSERT(m_impl);
-		std::shared_ptr<aux::session_impl> ptr = m_impl;
 
 		// capture the shared_ptr in the dispatched function
 		// to keep the session_impl alive
-		m_impl->get_io_service().dispatch([=] { ptr->abort(); });
-
-#if defined TORRENT_ASIO_DEBUGGING
-		int counter = 0;
-		while (log_async())
-		{
-			std::this_thread::sleep_for(seconds(1));
-			++counter;
-			std::printf("\x1b[2J\x1b[0;0H\x1b[33m==== Waiting to shut down: %d ==== \x1b[0m\n\n"
-				, counter);
-		}
-		async_dec_threads();
-
-		std::fprintf(stderr, "\n\nEXPECTS NO MORE ASYNC OPS\n\n\n");
-#endif
+		m_impl->call_abort();
 
 		if (m_thread && m_thread.unique())
+		{
+#if defined TORRENT_ASIO_DEBUGGING
+			wait_for_asio_handlers();
+#endif
 			m_thread->join();
+		}
 	}
 
 	session_proxy session::abort()
 	{
 		// stop calling the alert notify function now, to avoid it thinking the
 		// session is still alive
-		m_impl->alerts().set_notify_function(std::function<void()>());
+		m_impl->alerts().set_notify_function({});
 		return session_proxy(m_io_service, m_thread, m_impl);
 	}
 
@@ -417,7 +432,7 @@ namespace {
 		, std::shared_ptr<aux::session_impl> impl)
 		: m_io_service(std::move(ios))
 		, m_thread(std::move(t))
-		, m_impl(impl)
+		, m_impl(std::move(impl))
 	{}
 	session_proxy::session_proxy(session_proxy const&) = default;
 	session_proxy& session_proxy::operator=(session_proxy const&) = default;
@@ -426,11 +441,16 @@ namespace {
 	session_proxy::~session_proxy()
 	{
 		if (m_thread && m_thread.unique())
+		{
+#if defined TORRENT_ASIO_DEBUGGING
+			wait_for_asio_handlers();
+#endif
 			m_thread->join();
+		}
 	}
 
 	session_params::session_params(settings_pack sp)
-		: session_params(sp, default_plugins())
+		: session_params(std::move(sp), default_plugins())
 	{}
 
 	session_params::session_params(settings_pack sp
