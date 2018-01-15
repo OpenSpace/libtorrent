@@ -254,8 +254,7 @@ void web_peer_connection::disconnect(error_code const& ec
 
 piece_block_progress web_peer_connection::downloading_piece_progress() const
 {
-	if (m_requests.empty())
-		return piece_block_progress();
+	if (m_requests.empty()) return {};
 
 	std::shared_ptr<torrent> t = associated_torrent().lock();
 	TORRENT_ASSERT(t);
@@ -267,7 +266,7 @@ piece_block_progress web_peer_connection::downloading_piece_progress() const
 	// this is used to make sure that the block_index stays within
 	// bounds. If the entire piece is downloaded, the block_index
 	// would otherwise point to one past the end
-	int correction = m_piece.size() ? -1 : 0;
+	int correction = m_piece.empty() ? 0 : -1;
 	ret.block_index = (m_requests.front().start + int(m_piece.size()) + correction) / t->block_size();
 	TORRENT_ASSERT(ret.block_index < int(piece_block::invalid.block_index));
 	TORRENT_ASSERT(ret.piece_index < piece_block::invalid.piece_index);
@@ -514,7 +513,7 @@ namespace {
 				ec = errors::no_content_length;
 			}
 		}
-		return std::tuple<std::int64_t, std::int64_t>(range_start, range_end);
+		return std::make_tuple(range_start, range_end);
 	}
 }
 
@@ -578,7 +577,8 @@ void web_peer_connection::handle_error(int const bytes_left)
 	// associated with the file we just requested. Only
 	// when it doesn't have any of the file do the following
 	// pad files will make it complicated
-	int const retry_time = aux::numeric_cast<int>(m_parser.header_int("retry-after", m_settings.get_int(settings_pack::urlseed_wait_retry)));
+	auto const retry_time = value_or(m_parser.header_duration("retry-after")
+		, seconds32(m_settings.get_int(settings_pack::urlseed_wait_retry)));
 	// temporarily unavailable, retry later
 	t->retry_web_seed(this, retry_time);
 	if (t->alerts().should_post<url_seed_alert>())
@@ -661,7 +661,7 @@ void web_peer_connection::handle_redirect(int const bytes_left)
 
 			if (web->peer_info.connection != nullptr)
 			{
-				peer_connection* pc = static_cast<peer_connection*>(web->peer_info.connection);
+				auto* pc = static_cast<peer_connection*>(web->peer_info.connection);
 
 				// we just learned that this host has this file, and we're currently
 				// connected to it. Make it advertise that it has this file to the
@@ -873,7 +873,7 @@ void web_peer_connection::on_receive(error_code const& error
 			// === CHUNKED ENCODING  ===
 			// =========================
 
-			while (m_chunk_pos >= 0 && recv_buffer.size() > 0)
+			while (m_chunk_pos >= 0 && !recv_buffer.empty())
 			{
 				// first deliver any payload we have in the buffer so far, ahead of
 				// the next chunk header.

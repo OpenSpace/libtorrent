@@ -45,6 +45,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "libtorrent/io_service.hpp"
 #include "libtorrent/session_types.hpp"
 #include "libtorrent/portmap.hpp" // for portmap_protocol
+#include "libtorrent/alert_manager.hpp" // for dropped_alerts_t
 
 #include "libtorrent/kademlia/dht_storage.hpp"
 #include "libtorrent/kademlia/dht_settings.hpp"
@@ -94,10 +95,9 @@ namespace libtorrent {
 		// joining the DHT if provided at next session startup.
 		static constexpr save_state_flags_t save_dht_state = 2_bit;
 
-		// save pe_settings
-		static constexpr save_state_flags_t save_encryption_settings = 3_bit;
-
 #ifndef TORRENT_NO_DEPRECATE
+		// save pe_settings
+		static constexpr save_state_flags_t TORRENT_DEPRECATED_MEMBER save_encryption_settings = 3_bit;
 		static constexpr save_state_flags_t TORRENT_DEPRECATED_MEMBER save_as_map = 4_bit;
 		static constexpr save_state_flags_t TORRENT_DEPRECATED_MEMBER save_proxy = 5_bit;
 		static constexpr save_state_flags_t TORRENT_DEPRECATED_MEMBER save_i2p_proxy = 6_bit;
@@ -585,10 +585,13 @@ namespace libtorrent {
 		// the peer ID is randomized per peer.
 		peer_id id() const;
 
+#ifndef TORRENT_NO_DEPRECATE
+		// deprecated in 1.2
 		// sets the key sent to trackers. If it's not set, it is initialized
 		// by libtorrent. The key may be used by the tracker to identify the
 		// peer potentially across you changing your IP.
 		void set_key(std::uint32_t key);
+#endif
 
 		// built-in peer classes
 		static constexpr peer_class_t global_peer_class_id{0};
@@ -639,8 +642,11 @@ namespace libtorrent {
 		// The ``peer_class`` argument cannot be greater than 31. The bitmasks
 		// representing peer classes in the ``peer_class_filter`` are 32 bits.
 		//
+		// The ``get_peer_class_filter()`` function returns the current filter.
+		//
 		// For more information, see peer-classes_.
 		void set_peer_class_filter(ip_filter const& f);
+		ip_filter get_peer_class_filter() const;
 
 		// Sets and gets the *peer class type filter*. This is controls automatic
 		// peer class assignments to peers based on what kind of socket it is.
@@ -655,8 +661,8 @@ namespace libtorrent {
 		// 3. peer-class type filter, adding classes
 		//
 		// For more information, see peer-classes_.
-		// TODO: add get_peer_class_type_filter() as well
 		void set_peer_class_type_filter(peer_class_type_filter const& f);
+		peer_class_type_filter get_peer_class_type_filter() const;
 
 		// Creates a new peer class (see peer-classes_) with the given name. The
 		// returned integer is the new peer class identifier. Peer classes may
@@ -664,7 +670,7 @@ namespace libtorrent {
 		// class and returns a unique identifier.
 		//
 		// Identifiers are assigned from low numbers to higher. So if you plan on
-		// using certain peer classes in a call to `set_peer_class_filter()`_,
+		// using certain peer classes in a call to set_peer_class_filter(),
 		// make sure to create those early on, to get low identifiers.
 		//
 		// For more information on peer classes, see peer-classes_.
@@ -696,7 +702,7 @@ namespace libtorrent {
 		// return value of ``get_peer_class()`` is undefined.
 		//
 		// ``set_peer_class()`` sets all the information in the
-		// ``peer_class_info`` object in the specified peer class. There is no
+		// peer_class_info object in the specified peer class. There is no
 		// option to only update a single property.
 		//
 		// A peer or torrent belonging to more than one class, the highest
@@ -934,9 +940,22 @@ namespace libtorrent {
 		// retrieval of alerts should not be done in the callback. In fact, the
 		// callback should not block. It should not perform any expensive work.
 		// It really should just notify the main application thread.
+		//
+		// The ``dropped_alerts()`` function returns a ``std::bitfield``
+		// representing which types of alerts have been dropped. Dropped meaning
+		// that the alert failed to be delivered to the client. The most common
+		// cause of such failure is that the internal alert queue grew too big
+		// (controlled by alert_queue_size). This call also clears the internal
+		// bitfield, so the bitfield starts recording dropped alerts from this
+		// point forward only.
+		//
+		// The type of an alert is returned by the polymorphic function
+		// ``alert::type()`` but can also be queries from a concrete type via
+		// ``T::alert_type``, as a static constant.
 		void pop_alerts(std::vector<alert*>* alerts);
 		alert* wait_for_alert(time_duration max_wait);
 		void set_alert_notify(std::function<void()> const& fun);
+		dropped_alerts_t dropped_alerts();
 
 #ifndef TORRENT_NO_DEPRECATE
 #include "libtorrent/aux_/disable_warnings_push.hpp"

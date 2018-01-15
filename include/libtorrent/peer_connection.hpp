@@ -526,9 +526,9 @@ namespace aux {
 #ifndef TORRENT_DISABLE_LOGGING
 		bool should_log(peer_log_alert::direction_t direction) const override;
 		void peer_log(peer_log_alert::direction_t direction
-			, char const* event, char const* fmt, ...) const override TORRENT_FORMAT(4,5);
+			, char const* event, char const* fmt, ...) const noexcept override TORRENT_FORMAT(4,5);
 		void peer_log(peer_log_alert::direction_t direction
-			, char const* event) const;
+			, char const* event) const noexcept;
 
 		time_point m_connect_time;
 		time_point m_bitfield_time;
@@ -680,6 +680,8 @@ namespace aux {
 
 		std::shared_ptr<peer_connection> self()
 		{
+			TORRENT_ASSERT(!m_destructed);
+			TORRENT_ASSERT(m_in_use == 1337);
 			TORRENT_ASSERT(!m_in_constructor);
 			return shared_from_this();
 		}
@@ -987,6 +989,10 @@ namespace aux {
 		bandwidth_channel m_bandwidth_channel[num_channels];
 
 	protected:
+
+		template <typename Fun, typename... Args>
+		void wrap(Fun f, Args&&... a);
+
 		// statistics about upload and download speeds
 		// and total amount of uploads and downloads for
 		// this peer
@@ -1168,24 +1174,6 @@ namespace aux {
 		// outstanding requests need to increase at the same pace to keep up.
 		bool m_slow_start:1;
 
-		template <class Handler>
-		aux::allocating_handler<Handler, TORRENT_READ_HANDLER_MAX_SIZE>
-			make_read_handler(Handler const& handler)
-		{
-			return aux::allocating_handler<Handler, TORRENT_READ_HANDLER_MAX_SIZE>(
-				handler, m_read_handler_storage, *this
-			);
-		}
-
-		template <class Handler>
-		aux::allocating_handler<Handler, TORRENT_WRITE_HANDLER_MAX_SIZE>
-			make_write_handler(Handler const& handler)
-		{
-			return aux::allocating_handler<Handler, TORRENT_WRITE_HANDLER_MAX_SIZE>(
-				handler, m_write_handler_storage, *this
-			);
-		}
-
 #if TORRENT_USE_ASSERTS
 	public:
 		bool m_in_constructor = true;
@@ -1220,8 +1208,21 @@ namespace aux {
 		~cork()
 		{
 			if (!m_need_uncork) return;
-			m_pc.m_channel_state[peer_connection::upload_channel] &= ~peer_info::bw_network;
-			m_pc.setup_send();
+			try {
+				m_pc.m_channel_state[peer_connection::upload_channel] &= ~peer_info::bw_network;
+				m_pc.setup_send();
+			}
+			catch (std::bad_alloc const&) {
+				m_pc.disconnect(make_error_code(boost::system::errc::not_enough_memory)
+					, operation_t::sock_write);
+			}
+			catch (boost::system::system_error const& err) {
+				m_pc.disconnect(err.code(), operation_t::sock_write);
+			}
+			catch (...) {
+				m_pc.disconnect(make_error_code(boost::system::errc::not_enough_memory)
+					, operation_t::sock_write);
+			}
 		}
 	private:
 		peer_connection& m_pc;

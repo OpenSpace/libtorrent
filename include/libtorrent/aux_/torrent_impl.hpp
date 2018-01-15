@@ -1,6 +1,6 @@
 /*
 
-Copyright (c) 2017, Arvid Norberg
+Copyright (c) 2003-2017, Arvid Norberg
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -29,46 +29,52 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 
 */
-#ifndef TORRENT_NOEXCEPT_MOVABLE_HPP_INCLUDED
-#define TORRENT_NOEXCEPT_MOVABLE_HPP_INCLUDED
 
-#include <type_traits>
+#ifndef TORRENT_TORRENT_IMPL_HPP_INCLUDED
+#define TORRENT_TORRENT_IMPL_HPP_INCLUDED
+
+// this is not a normal header, it's just this template, to be able to call this
+// function from more than one translation unit. But it's still internal
 
 namespace libtorrent {
-namespace aux {
 
-	// this is a silly wrapper for address and endpoint to make their move
-	// constructors be noexcept (because boost.asio is incorrectly making them
-	// potentially throwing). This can be removed once libtorrent uses the
-	// networking TS.
-	template <typename T>
-	struct noexcept_movable : T
+	template <typename Fun, typename... Args>
+	void torrent::wrap(Fun f, Args&&... a)
+#ifndef BOOST_NO_EXCEPTIONS
+		try
+#endif
 	{
-		noexcept_movable() noexcept(std::is_nothrow_default_constructible<T>::value) {}
-		noexcept_movable(noexcept_movable<T>&& rhs) noexcept
-			: T(std::forward<T>(rhs))
-		{}
-		noexcept_movable(noexcept_movable<T> const& rhs)
-			: T(static_cast<T const&>(rhs))
-		{}
-		noexcept_movable(T&& rhs) noexcept : T(std::forward<T>(rhs)) {} // NOLINT
-		noexcept_movable(T const& rhs) : T(rhs) {} // NOLINT
-		noexcept_movable& operator=(noexcept_movable&& rhs) noexcept
-		{
-			this->T::operator=(std::forward<T>(rhs));
-			return *this;
-		}
-		noexcept_movable& operator=(noexcept_movable const& rhs)
-		{
-			this->T::operator=(rhs);
-			return *this;
-		}
+		(this->*f)(std::forward<Args>(a)...);
+	}
+#ifndef BOOST_NO_EXCEPTIONS
+	catch (system_error const& e) {
+#ifndef TORRENT_DISABLE_LOGGING
+		debug_log("EXCEPTION: (%d %s) %s"
+			, e.code().value()
+			, e.code().message().c_str()
+			, e.what());
+#endif
+		alerts().emplace_alert<torrent_error_alert>(get_handle()
+			, e.code(), e.what());
+		pause();
+	} catch (std::exception const& e) {
+#ifndef TORRENT_DISABLE_LOGGING
+		debug_log("EXCEPTION: %s", e.what());
+#endif
+		alerts().emplace_alert<torrent_error_alert>(get_handle()
+			, error_code(), e.what());
+		pause();
+	} catch (...) {
+#ifndef TORRENT_DISABLE_LOGGING
+		debug_log("EXCEPTION: unknown");
+#endif
+		alerts().emplace_alert<torrent_error_alert>(get_handle()
+			, error_code(), "unknown error");
+		pause();
+	}
+#endif
 
-		using T::T;
-		using T::operator=;
-	};
-
-}
 }
 
 #endif
+

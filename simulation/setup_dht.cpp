@@ -109,8 +109,7 @@ struct dht_node final : lt::dht::socket_manager
 		sock().bind(asio::ip::udp::endpoint(
 			m_ipv6 ? lt::address(lt::address_v6::any()) : lt::address(lt::address_v4::any()), 6881));
 
-		udp::socket::non_blocking_io ioc(true);
-		sock().io_control(ioc);
+		sock().non_blocking(true);
 		sock().async_receive_from(asio::mutable_buffers_1(m_buffer, sizeof(m_buffer))
 			, m_ep, [&](lt::error_code const& ec, std::size_t bytes_transferred)
 				{ this->on_read(ec, bytes_transferred); });
@@ -140,7 +139,7 @@ struct dht_node final : lt::dht::socket_manager
 		// since the simulation is single threaded, we can get away with just
 		// allocating a single of these
 		static bdecode_node msg;
-		int ret = bdecode(m_buffer, m_buffer + bytes_transferred, msg, err, &pos, 10, 500);
+		int const ret = bdecode(m_buffer, m_buffer + bytes_transferred, msg, err, &pos, 10, 500);
 		if (ret != 0) return;
 
 		if (msg.type() != bdecode_node::dict_t) return;

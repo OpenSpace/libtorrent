@@ -35,6 +35,8 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "utils.hpp"
 #include "libtorrent/session.hpp"
 #include "libtorrent/socket.hpp"
+#include "libtorrent/alert_types.hpp"
+#include "libtorrent/extensions.hpp"
 #include "simulator/simulator.hpp"
 #include "simulator/utils.hpp" // for timer
 #include "settings.hpp"
@@ -64,6 +66,7 @@ TORRENT_TEST(seed_mode)
 		});
 }
 
+#ifndef TORRENT_DISABLE_LOGGING
 TORRENT_TEST(ip_notifier_setting)
 {
 	int s_tick = 0;
@@ -112,3 +115,117 @@ TORRENT_TEST(ip_notifier_setting)
 
 	TEST_EQUAL(working_count, 2);
 }
+#endif
+
+TORRENT_TEST(force_proxy)
+{
+	// setup the simulation
+	sim::default_config network_cfg;
+	sim::simulation sim{network_cfg};
+	std::unique_ptr<sim::asio::io_service> ios{new sim::asio::io_service(sim
+		, address_v4::from_string("50.0.0.1"))};
+	lt::session_proxy zombie;
+
+	lt::settings_pack pack = settings();
+	pack.set_bool(settings_pack::force_proxy, true);
+	// create session
+	std::shared_ptr<lt::session> ses = std::make_shared<lt::session>(pack, *ios);
+
+	// disable force proxy in 3 seconds (this should make us open up listen
+	// sockets)
+	sim::timer t1(sim, lt::seconds(3), [&](boost::system::error_code const& ec)
+	{
+		lt::settings_pack p;
+		p.set_bool(settings_pack::force_proxy, false);
+		ses->apply_settings(p);
+	});
+
+	int num_listen_tcp = 0;
+	int num_listen_udp = 0;
+	print_alerts(*ses, [&](lt::session& ses, lt::alert const* a) {
+		if (auto la = alert_cast<listen_succeeded_alert>(a))
+		{
+			if (la->socket_type == socket_type_t::tcp)
+				++num_listen_tcp;
+			else if (la->socket_type == socket_type_t::udp)
+				++num_listen_udp;
+		}
+	});
+
+	// run for 10 seconds.
+	sim::timer t2(sim, lt::seconds(10), [&](boost::system::error_code const& ec)
+	{
+		fprintf(stderr, "shutting down\n");
+		// shut down
+		zombie = ses->abort();
+		ses.reset();
+	});
+	sim.run();
+
+	// on session construction, we won't listen to TCP since we're in force-proxy
+	// mode. We will open up the UDP sockets though, since they are used for
+	// outgoing connections too.
+	// when we disable force-proxy, we'll re-open the sockets and listen on TCP
+	// connections this time, so we'll get a tcp_listen and a udp_listen.
+	TEST_EQUAL(num_listen_tcp, 1);
+	TEST_EQUAL(num_listen_udp, 2);
+}
+
+#ifndef TORRENT_DISABLE_EXTENSIONS
+struct test_plugin : lt::torrent_plugin
+{
+	bool m_new_connection = false;
+	bool m_files_checked = false;
+
+	std::shared_ptr<peer_plugin> new_connection(peer_connection_handle const&) override
+	{
+		m_new_connection = true;
+		return std::shared_ptr<peer_plugin>();
+	}
+
+	void on_files_checked() override
+	{
+		m_files_checked = true;
+	}
+};
+
+TORRENT_TEST(add_extension_while_transfer)
+{
+	bool done = false;
+	auto p = std::make_shared<test_plugin>();
+
+	setup_swarm(2, swarm_test::download
+		// add session
+		, [](lt::settings_pack& pack)
+		{
+			pack.set_int(settings_pack::tick_interval, 1000);
+			pack.set_int(settings_pack::alert_mask, alert::all_categories);
+		}
+		// add torrent
+		, [](lt::add_torrent_params& params) {}
+		// on alert
+		, [&done, p](lt::alert const* a, lt::session& ses)
+		{
+			if (a->type() == peer_connect_alert::alert_type)
+			{
+				auto create_test_plugin = [p](torrent_handle const& th, void*)
+				{ return p; };
+
+				lt::torrent_handle th = alert_cast<peer_connect_alert>(a)->handle;
+				th.add_extension(create_test_plugin);
+
+				done = true;
+			}
+		}
+		// terminate
+		, [&done](int ticks, lt::session& ses) -> bool
+		{
+			// exit after 10 seconds
+			return ticks > 10 || done;
+		});
+
+	TEST_CHECK(done);
+	TEST_CHECK(p->m_new_connection)
+	TEST_CHECK(p->m_files_checked);
+}
+#endif // TORRENT_DISABLE_EXTENSIONS

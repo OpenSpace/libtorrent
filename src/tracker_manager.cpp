@@ -77,7 +77,7 @@ namespace libtorrent {
 		{
 			timeout = timeout == 0
 				? m_completion_timeout
-				: (std::min)(m_completion_timeout, timeout);
+				: std::min(m_completion_timeout, timeout);
 		}
 
 		ADD_OUTSTANDING_ASYNC("timeout_handler::timeout_callback");
@@ -132,7 +132,7 @@ namespace libtorrent {
 		{
 			timeout = timeout == 0
 				? int(m_completion_timeout - total_seconds(m_read_time - m_start_time))
-				: (std::min)(int(m_completion_timeout - total_seconds(m_read_time - m_start_time)), timeout);
+				: std::min(int(m_completion_timeout - total_seconds(m_read_time - m_start_time)), timeout);
 		}
 		ADD_OUTSTANDING_ASYNC("timeout_handler::timeout_callback");
 		error_code ec;
@@ -160,19 +160,19 @@ namespace libtorrent {
 		return m_requester.lock();
 	}
 
-	void tracker_connection::fail(error_code const& ec, int code
+	void tracker_connection::fail(error_code const& ec
 		, char const* msg, seconds32 const interval, seconds32 const min_interval)
 	{
 		// we need to post the error to avoid deadlock
 		get_io_service().post(std::bind(&tracker_connection::fail_impl
-			, shared_from_this(), ec, code, std::string(msg), interval, min_interval));
+			, shared_from_this(), ec, std::string(msg), interval, min_interval));
 	}
 
-	void tracker_connection::fail_impl(error_code const& ec, int code
-		, std::string msg, seconds32 const interval, seconds32 const min_interval)
+	void tracker_connection::fail_impl(error_code const& ec
+		, std::string const msg, seconds32 const interval, seconds32 const min_interval)
 	{
 		std::shared_ptr<request_callback> cb = requester();
-		if (cb) cb->tracker_request_error(m_req, code, ec, msg.c_str()
+		if (cb) cb->tracker_request_error(m_req, ec, msg
 			, interval.count() == 0 ? min_interval : interval);
 		close();
 	}
@@ -266,6 +266,12 @@ namespace libtorrent {
 		if (req.event == tracker_request::stopped)
 			req.num_want = 0;
 
+#ifndef TORRENT_DISABLE_LOGGING
+		std::shared_ptr<request_callback> cb = c.lock();
+		if (cb) cb->debug_log("*** QUEUE_TRACKER_REQUEST [ listen_port: %d ]"
+			, req.listen_port);
+#endif
+
 		TORRENT_ASSERT(!m_abort || req.event == tracker_request::stopped);
 		if (m_abort && req.event != tracker_request::stopped)
 			return;
@@ -294,7 +300,7 @@ namespace libtorrent {
 		// we need to post the error to avoid deadlock
 		if (std::shared_ptr<request_callback> r = c.lock())
 			ios.post(std::bind(&request_callback::tracker_request_error, r, req
-				, -1, error_code(errors::unsupported_url_protocol)
+				, error_code(errors::unsupported_url_protocol)
 				, "", seconds32(0)));
 	}
 

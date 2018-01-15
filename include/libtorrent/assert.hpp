@@ -50,10 +50,10 @@ TORRENT_EXPORT void print_backtrace(char* out, int len, int max_depth = 0, void*
 #define TORRENT_WHILE_0  \
 	__pragma( warning(push) ) \
 	__pragma( warning(disable:4127) ) \
-	while (0) \
+	while (false) \
 	__pragma( warning(pop) )
 #else
-#define TORRENT_WHILE_0 while (0)
+#define TORRENT_WHILE_0 while (false)
 #endif
 
 
@@ -71,7 +71,7 @@ TORRENT_EXPORT void assert_fail(const char* expr, int line
 #if TORRENT_USE_ASSERTS
 
 #ifdef TORRENT_PRODUCTION_ASSERTS
-extern char const* libtorrent_assert_log;
+extern TORRENT_EXPORT char const* libtorrent_assert_log;
 #endif
 
 #if TORRENT_USE_IOSTREAM

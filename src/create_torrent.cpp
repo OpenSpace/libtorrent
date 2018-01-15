@@ -285,7 +285,8 @@ namespace {
 			info_hash
 		};
 
-		storage_holder storage = disk_thread.new_torrent(default_storage_constructor, std::move(params), std::shared_ptr<void>());
+		storage_holder storage = disk_thread.new_torrent(default_storage_constructor
+			, params, std::shared_ptr<void>());
 
 		settings_pack sett;
 		sett.set_int(settings_pack::cache_size, 0);
@@ -328,16 +329,30 @@ namespace {
 		// a piece_size of 0 means automatic
 		if (piece_size == 0 && !m_merkle_torrent)
 		{
-			const int target_size = 40 * 1024;
-			piece_size = int(fs.total_size() / (target_size / 20));
+			// size_table is computed from the following:
+			//   target_list_size = sqrt(total_size) * 2;
+			//   target_piece_size = total_size / (target_list_size / hash_size);
+			// Given hash_size = 20 bytes, target_piece_size = (16*1024 * pow(2, i))
+			// we can determine size_table = (total_size = pow(2 * target_piece_size / hash_size, 2))
+			std::array<std::int64_t, 10> const size_table{{
+				       2684355LL // ->  16kiB
+				,     10737418LL // ->  32 kiB
+				,     42949673LL // ->  64 kiB
+				,    171798692LL // -> 128 kiB
+				,    687194767LL // -> 256 kiB
+				,   2748779069LL // -> 512 kiB
+				,  10995116278LL // -> 1 MiB
+				,  43980465111LL // -> 2 MiB
+				, 175921860444LL // -> 4 MiB
+				, 703687441777LL}}; // -> 8 MiB
 
-			int i = 16*1024;
-			for (; i < 2*1024*1024; i *= 2)
+			int i = 0;
+			for (auto const s : size_table)
 			{
-				if (piece_size > i) continue;
-				break;
+				if (s >= fs.total_size()) break;
+				++i;
 			}
-			piece_size = i;
+			piece_size = default_block_size << i;
 		}
 		else if (piece_size == 0 && m_merkle_torrent)
 		{
@@ -411,7 +426,6 @@ namespace {
 		boost::shared_array<char> const info = ti.metadata();
 		int const size = ti.metadata_size();
 		m_info_dict.preformatted().assign(&info[0], &info[0] + size);
-		m_info_hash = ti.info_hash();
 	}
 
 	entry create_torrent::generate() const
@@ -569,7 +583,7 @@ namespace {
 
 				for (file_index_t i(0); i != m_files.end_file(); ++i)
 				{
-					files.list().push_back(entry());
+					files.list().emplace_back();
 					entry& file_e = files.list().back();
 					if (m_include_mtime && m_files.mtime(i)) file_e["mtime"] = m_files.mtime(i);
 					file_e["length"] = m_files.file_size(i);
@@ -620,7 +634,7 @@ namespace {
 			int const num_nodes = merkle_num_nodes(num_leafs);
 			int const first_leaf = num_nodes - num_leafs;
 			m_merkle_tree.resize(num_nodes);
-			int const num_pieces = int(m_piece_hash.size());
+			auto const num_pieces = int(m_piece_hash.size());
 			for (int i = 0; i < num_pieces; ++i)
 				m_merkle_tree[first_leaf + i] = m_piece_hash[piece_index_t(i)];
 			for (int i = num_pieces; i < num_leafs; ++i)
@@ -656,7 +670,6 @@ namespace {
 
 		std::vector<char> buf;
 		bencode(std::back_inserter(buf), info);
-		m_info_hash = hasher(buf).final();
 
 		return dict;
 	}

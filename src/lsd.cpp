@@ -68,9 +68,9 @@ static error_code dummy;
 
 lsd::lsd(io_service& ios, aux::lsd_callback& cb)
 	: m_callback(cb)
-	, m_socket(udp::endpoint(address_v4::from_string("239.192.152.143", dummy), 6771))
+	, m_socket(udp::endpoint(make_address_v4("239.192.152.143", dummy), 6771))
 #if TORRENT_USE_IPV6
-	, m_socket6(udp::endpoint(address_v6::from_string("ff15::efc0:988f", dummy), 6771))
+	, m_socket6(udp::endpoint(make_address_v6("ff15::efc0:988f", dummy), 6771))
 #endif
 	, m_broadcast_timer(ios)
 	, m_cookie((random(0x7fffffff) ^ std::uintptr_t(this)) & 0x7fffffff)
@@ -103,12 +103,12 @@ void lsd::debug_log(char const* fmt, ...) const
 
 void lsd::start(error_code& ec)
 {
-	m_socket.open(std::bind(&lsd::on_announce, self(), _1, _2, _3)
+	m_socket.open(std::bind(&lsd::on_announce, self(), _1, _2)
 		, m_broadcast_timer.get_io_service(), ec);
 	if (ec) return;
 
 #if TORRENT_USE_IPV6
-	m_socket6.open(std::bind(&lsd::on_announce, self(), _1, _2, _3)
+	m_socket6.open(std::bind(&lsd::on_announce, self(), _1, _2)
 		, m_broadcast_timer.get_io_service(), ec);
 #endif
 }
@@ -198,13 +198,12 @@ void lsd::resend_announce(error_code const& e, sha1_hash const& info_hash
 	announce_impl(info_hash, listen_port, false, retry_count);
 }
 
-void lsd::on_announce(udp::endpoint const& from, char const* buf
-	, std::size_t const bytes_transferred)
+void lsd::on_announce(udp::endpoint const& from, span<char const> buf)
 {
 	http_parser p;
 
 	bool error = false;
-	p.incoming({buf, bytes_transferred}, error);
+	p.incoming(buf, error);
 
 	if (!p.header_finished() || error)
 	{

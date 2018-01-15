@@ -161,9 +161,9 @@ namespace libtorrent {
 	name(name&&) noexcept = default; \
 	static const int priority = prio; \
 	static const int alert_type = seq; \
-	virtual int type() const override { return alert_type; } \
-	virtual alert_category_t category() const override { return static_category; } \
-	virtual char const* what() const override { return #name; }
+	virtual int type() const noexcept override { return alert_type; } \
+	virtual alert_category_t category() const noexcept override { return static_category; } \
+	virtual char const* what() const noexcept override { return #name; }
 
 #define TORRENT_DEFINE_ALERT(name, seq) \
 	TORRENT_DEFINE_ALERT_IMPL(name, seq, 0)
@@ -439,7 +439,7 @@ namespace libtorrent {
 		// internal
 		tracker_error_alert(aux::stack_allocator& alloc
 			, torrent_handle const& h, tcp::endpoint const& ep
-			, int times, int status, string_view u
+			, int times, string_view u
 			, error_code const& e, string_view m);
 
 		TORRENT_DEFINE_ALERT(tracker_error_alert, 11)
@@ -448,7 +448,6 @@ namespace libtorrent {
 		std::string message() const override;
 
 		int const times_in_row;
-		int const status_code;
 		error_code const error;
 
 		// the message associated with this error
@@ -458,6 +457,7 @@ namespace libtorrent {
 		aux::allocation_slot m_msg_idx;
 #ifndef TORRENT_NO_DEPRECATE
 	public:
+		int const status_code;
 		std::string TORRENT_DEPRECATED_MEMBER msg;
 #endif
 	};
@@ -2474,7 +2474,7 @@ namespace libtorrent {
 	private:
 		std::reference_wrapper<aux::stack_allocator> m_alloc;
 		aux::allocation_slot m_msg_idx;
-		int const m_size;
+		std::size_t const m_size;
 #ifndef TORRENT_NO_DEPRECATE
 	public:
 		direction_t TORRENT_DEPRECATED_MEMBER dir;

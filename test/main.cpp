@@ -74,6 +74,8 @@ namespace {
 int old_stdout = -1;
 int old_stderr = -1;
 bool redirect_stdout = true;
+// sanitizer output will go to stderr and we won't get an opportunity to print
+// it, so don't redirect stderr by default
 bool redirect_stderr = false;
 bool keep_files = false;
 
@@ -83,15 +85,21 @@ unit_test_t* current_test = nullptr;
 void output_test_log_to_terminal()
 {
 	if (current_test == nullptr
-		|| (old_stdout == -1 && old_stderr == -1)
-		|| (!redirect_stdout && !redirect_stderr)
 		|| current_test->output == nullptr)
 		return;
 
 	fflush(stdout);
 	fflush(stderr);
-	if (old_stdout != -1) dup2(old_stdout, fileno(stdout));
-	if (old_stderr != -1) dup2(old_stderr, fileno(stderr));
+	if (old_stdout != -1)
+	{
+		dup2(old_stdout, fileno(stdout));
+		old_stdout = -1;
+	}
+	if (old_stderr != -1)
+	{
+		dup2(old_stderr, fileno(stderr));
+		old_stderr = -1;
+	}
 
 	fseek(current_test->output, 0, SEEK_SET);
 	std::printf("\x1b[1m[%s]\x1b[0m\n\n", current_test->name);
@@ -269,7 +277,7 @@ struct unit_directory_guard
 
 void EXPORT reset_output()
 {
-	if (current_test == nullptr || current_test->output == 0) return;
+	if (current_test == nullptr || current_test->output == nullptr) return;
 	fflush(stdout);
 	fflush(stderr);
 	rewind(current_test->output);
@@ -314,6 +322,7 @@ int EXPORT main(int argc, char const* argv[])
 		if (argv[0] == "-n"_sv || argv[0] == "--no-redirect"_sv)
 		{
 			redirect_stdout = false;
+			redirect_stderr = false;
 		}
 
 		if (argv[0] == "--stderr-redirect"_sv)
@@ -409,6 +418,7 @@ int EXPORT main(int argc, char const* argv[])
 		if (ec)
 		{
 			std::printf("Failed to create unit test directory: %s\n", ec.message().c_str());
+			output_test_log_to_terminal();
 			return 1;
 		}
 		unit_directory_guard unit_dir_guard{unit_dir};
@@ -416,6 +426,7 @@ int EXPORT main(int argc, char const* argv[])
 		if (ec)
 		{
 			std::printf("Failed to change unit test directory: %s\n", ec.message().c_str());
+			output_test_log_to_terminal();
 			return 1;
 		}
 
@@ -506,8 +517,8 @@ int EXPORT main(int argc, char const* argv[])
 			fclose(t.output);
 	}
 
-	if (redirect_stdout) dup2(old_stdout, fileno(stdout));
-	if (redirect_stderr) dup2(old_stderr, fileno(stderr));
+	if (redirect_stdout && old_stdout != -1) dup2(old_stdout, fileno(stdout));
+	if (redirect_stderr && old_stderr != -1) dup2(old_stderr, fileno(stderr));
 
 	if (!tests_to_run.empty())
 	{
@@ -522,6 +533,7 @@ int EXPORT main(int argc, char const* argv[])
 	if (num_run == 0)
 	{
 		std::printf("\x1b[31mTEST_ERROR: no unit tests run\x1b[0m\n");
+		output_test_log_to_terminal();
 		return 1;
 	}
 

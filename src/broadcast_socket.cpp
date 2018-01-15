@@ -59,7 +59,7 @@ namespace libtorrent {
 	bool is_ip_address(std::string const& host)
 	{
 		error_code ec;
-		address::from_string(host, ec);
+		make_address(host, ec);
 		return !ec;
 	}
 
@@ -148,7 +148,7 @@ namespace libtorrent {
 #elif defined TORRENT_WINDOWS
 		TORRENT_TRY {
 			error_code ec;
-			address::from_string("::1", ec);
+			make_address("::1", ec);
 			return !ec;
 		} TORRENT_CATCH(std::exception const&) { return false; }
 #else
@@ -157,7 +157,8 @@ namespace libtorrent {
 		error_code ec;
 		test.open(tcp::v6(), ec);
 		if (ec) return false;
-		test.bind(tcp::endpoint(address_v6::from_string("::1"), 0), ec);
+		error_code ignore;
+		test.bind(tcp::endpoint(make_address_v6("::1", ignore), 0), ec);
 		return !bool(ec);
 #endif
 	}
@@ -180,10 +181,10 @@ namespace libtorrent {
 		TORRENT_ASSERT(m_multicast_endpoint.address().is_multicast());
 	}
 
-	void broadcast_socket::open(receive_handler_t const& handler
+	void broadcast_socket::open(receive_handler_t handler
 		, io_service& ios, error_code& ec, bool loopback)
 	{
-		m_on_receive = handler;
+		m_on_receive = std::move(handler);
 
 		std::vector<ip_interface> interfaces = enum_net_interfaces(ios, ec);
 
@@ -317,7 +318,7 @@ namespace libtorrent {
 			maybe_abort();
 			return;
 		}
-		m_on_receive(s->remote, s->buffer, int(bytes_transferred));
+		m_on_receive(s->remote, {s->buffer, bytes_transferred});
 
 		if (maybe_abort()) return;
 		if (!s->socket) return;

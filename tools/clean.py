@@ -13,6 +13,8 @@ def clean():
 		'upnp.log',
 		'natpmp.log',
 		'bin',
+		'build-aux',
+		'.deps',
 		'test_tmp_*',
 		'bjam_build.*.xml'
 		'*.exe',
@@ -34,6 +36,11 @@ def clean():
 		'Jamfile.orig',
 		'*.o',
 		'*.lo',
+		'autom4te.cache',
+		'configure',
+		'config.report',
+		'config.log',
+		'.lib',
 	]
 
 	directories = [
@@ -42,6 +49,7 @@ def clean():
 		'.',
 		'tools',
 		'src',
+		'simulation',
 		os.path.join('src', 'kademlia'),
 		os.path.join('include', 'libtorrent'),
 		os.path.join('include', os.path.join('libtorrent', '_aux')),
@@ -49,7 +57,8 @@ def clean():
 		os.path.join('bindings', 'python'),
 		os.path.join('bindings', os.path.join('python', 'src')),
 		os.path.join('bindings', 'c'),
-		os.path.join('bindings', os.path.join('c', 'src'))
+		os.path.join('bindings', os.path.join('c', 'src')),
+		os.path.join('simulation', 'libsimulator')
 	]
 
 	for d in directories:
